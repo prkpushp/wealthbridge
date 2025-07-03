@@ -36,13 +36,14 @@ jobs:
         id: postbody
         if: env.HTML_FILE != ''
         run: |
+          CONTENT=$(cat "$HTML_FILE")
           echo "POST_BODY<<EOF" >> $GITHUB_ENV
-          cat "$HTML_FILE" >> $GITHUB_ENV
+          echo "$CONTENT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Publish to WordPress
         if: env.HTML_FILE != ''
-        uses: rtCamp/action-wordpress-publish@v2
+        uses: rtCamp/action-wordpress-publish@v1
         with:
           wordpress_url: ${{ secrets.WP_URL }}
           wordpress_user: ${{ secrets.WP_USER }}
