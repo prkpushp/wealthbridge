@@ -1,0 +1,46 @@
+name: Publish Blog Post to WordPress
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/posts/*.md'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for filename parsing)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Pandoc
+        run: sudo apt-get install -y pandoc
+
+      - name: Find latest added/modified Markdown file
+        id: findfile
+        run: |
+          # Find the latest added/modified .md file in content/posts
+          file=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^content/posts/' | grep '\.md$' | tail -n 1)
+          echo "MD_FILE=$file" >> $GITHUB_ENV
+          echo "Found file: $file"
+
+      - name: Convert Markdown to HTML
+        if: env.MD_FILE != ''
+        run: |
+          pandoc "$MD_FILE" -f markdown -t html -o "${MD_FILE%.md}.html"
+
+      - name: Publish to WordPress
+        if: env.MD_FILE != ''
+        uses: wearerequired/action-wordpress@v1
+        with:
+          wordpress_url: ${{ secrets.WP_URL }}
+          wordpress_username: ${{ secrets.WP_USER }}
+          wordpress_application_password: ${{ secrets.WP_APPLICATION_PASSWORD }}
+          title: ${{ env.MD_FILE }}
+          content_file: "${{ env.MD_FILE%.md }}.html"
+          status: "publish"
