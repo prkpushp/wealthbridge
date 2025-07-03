@@ -11,19 +11,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Pandoc
         run: sudo apt-get install -y pandoc
 
       - name: Find latest added/modified Markdown file
         id: findfile
+        shell: bash
         run: |
-          # Find last modified/added Markdown file in content/posts
           file=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^content/posts/' | grep '\.md$' | tail -n 1)
           if [ -z "$file" ]; then
-            # fallback: just pick the latest file in git if diff is empty (e.g. on workflow_dispatch)
             file=$(ls -t content/posts/*.md | head -n 1)
           fi
           html_file="${file%.md}.html"
@@ -36,19 +34,23 @@ jobs:
         run: |
           pandoc "$MD_FILE" -f markdown -t html -o "$HTML_FILE"
 
-      - name: Read HTML as output
+      - name: Read HTML content
         id: get_html
         run: |
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          cat "$HTML_FILE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          CONTENT=$(cat "$HTML_FILE" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read()))")
+          echo "content=$CONTENT" >> $GITHUB_OUTPUT
 
-      - name: Publish to WordPress
-        uses: rtCamp/action-wordpress-publish@v1
-        with:
-          wordpress_url: ${{ secrets.WP_URL }}
-          wordpress_user: ${{ secrets.WP_USER }}
-          wordpress_password: ${{ secrets.WP_APPLICATION_PASSWORD }}
-          post_title: ${{ env.TITLE }}
-          post_content: ${{ steps.get_html.outputs.content }}
-          post_status: 'publish'
+      - name: Publish to WordPress via REST API
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
+          TITLE: ${{ env.TITLE }}
+          CONTENT: ${{ steps.get_html.outputs.content }}
+        run: |
+          AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
+          curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
+            -H "Authorization: Basic $AUTH" \
+            -H "Content-Type: application/json" \
+            -d "{\"title\": \"$TITLE\", \"content\": \"$(python3 -c \"import urllib.parse,os; print(urllib.parse.unquote(os.environ['CONTENT']))\")\", \"status\": \"publish\"}"
+            
