@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'content/posts/*.md'
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -31,13 +32,21 @@ jobs:
         run: |
           pandoc "$MD_FILE" -f markdown -t html -o "$HTML_FILE"
 
+      - name: Read HTML content
+        id: postbody
+        if: env.HTML_FILE != ''
+        run: |
+          echo "POST_BODY<<EOF" >> $GITHUB_ENV
+          cat "$HTML_FILE" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Publish to WordPress
-        if: env.MD_FILE != ''
-        uses: wearerequired/action-wordpress@v1
+        if: env.HTML_FILE != ''
+        uses: rtCamp/action-wordpress-publish@v2
         with:
           wordpress_url: ${{ secrets.WP_URL }}
-          wordpress_username: ${{ secrets.WP_USER }}
-          wordpress_application_password: ${{ secrets.WP_APPLICATION_PASSWORD }}
-          title: ${{ env.MD_FILE }}
-          content_file: ${{ env.HTML_FILE }}
-          status: "publish"
+          wordpress_user: ${{ secrets.WP_USER }}
+          wordpress_password: ${{ secrets.WP_APPLICATION_PASSWORD }}
+          post_title: ${{ env.MD_FILE }}
+          post_content: ${{ env.POST_BODY }}
+          post_status: 'publish'
