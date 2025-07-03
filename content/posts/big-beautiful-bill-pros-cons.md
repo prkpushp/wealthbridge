@@ -1,4 +1,4 @@
-# Big Beautiful Bill: What Is It and What Are the Pros & Cons?
+# Big Beautiful Bill: What Is It and What Are the Pros & Cons??
 
 The term “Big Beautiful Bill” has been circulating in financial circles, referring to high-denomination or visually appealing paper currency—often limited edition or commemorative bills. Whether you're a collector, investor, or simply curious, it’s worth understanding the advantages and drawbacks of owning or investing in these unique bills.
 
