@@ -20,8 +20,10 @@ jobs:
         id: findfile
         shell: bash
         run: |
-          file=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^content/posts/' | grep '\.md$' | tail -n 1)
+          set -e
+          file=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^content/posts/' | grep '\.md$' | tail -n 1 || true)
           if [ -z "$file" ]; then
+            # fallback: pick the latest file in content/posts/
             file=$(ls -t content/posts/*.md | head -n 1)
           fi
           html_file="${file%.md}.html"
@@ -34,11 +36,12 @@ jobs:
         run: |
           pandoc "$MD_FILE" -f markdown -t html -o "$HTML_FILE"
 
-      - name: Read HTML content
+      - name: Read HTML as output
         id: get_html
         run: |
-          CONTENT=$(cat "$HTML_FILE" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read()))")
-          echo "content=$CONTENT" >> $GITHUB_OUTPUT
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          cat "$HTML_FILE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Publish to WordPress via REST API
         env:
@@ -46,11 +49,9 @@ jobs:
           WP_USER: ${{ secrets.WP_USER }}
           WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
           TITLE: ${{ env.TITLE }}
-          CONTENT: ${{ steps.get_html.outputs.content }}
         run: |
           AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
           curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
-            -d "{\"title\": \"$TITLE\", \"content\": \"$(python3 -c \"import urllib.parse,os; print(urllib.parse.unquote(os.environ['CONTENT']))\")\", \"status\": \"publish\"}"
-            
+            -d "{\"title\": \"$TITLE\", \"content\": \"$(echo "${{ steps.get_html.outputs.content }}" | sed ':a;N;$!ba;s/\n/\\n/g')\", \"status\": \"publish\"}"
