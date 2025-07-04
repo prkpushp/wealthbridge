@@ -1,0 +1,57 @@
+name: Publish Blog Post to WordPress
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/posts/*.md'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pandoc
+        run: sudo apt-get install -y pandoc
+
+      - name: Find latest added/modified Markdown file
+        id: findfile
+        shell: bash
+        run: |
+          set -e
+          file=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^content/posts/' | grep '\.md$' | tail -n 1 || true)
+          if [ -z "$file" ]; then
+            # fallback: pick the latest file in content/posts/
+            file=$(ls -t content/posts/*.md | head -n 1)
+          fi
+          html_file="${file%.md}.html"
+          title=$(basename "$file" .md)
+          echo "MD_FILE=$file" >> $GITHUB_ENV
+          echo "HTML_FILE=$html_file" >> $GITHUB_ENV
+          echo "TITLE=$title" >> $GITHUB_ENV
+
+      - name: Convert Markdown to HTML
+        run: |
+          pandoc "$MD_FILE" -f markdown -t html -o "$HTML_FILE"
+
+      - name: Read HTML as output
+        id: get_html
+        run: |
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          cat "$HTML_FILE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Publish to WordPress via REST API
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
+          TITLE: ${{ env.TITLE }}
+        run: |
+          AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
+          curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
+            -H "Authorization: Basic $AUTH" \
+            -H "Content-Type: application/json" \
+            -d "{\"title\": \"$TITLE\", \"content\": \"$(echo "${{ steps.get_html.outputs.content }}" | sed ':a;N;$!ba;s/\n/\\n/g')\", \"status\": \"publish\"}"
