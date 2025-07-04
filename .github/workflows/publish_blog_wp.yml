@@ -6,6 +6,15 @@ on:
     paths:
       - 'content/posts/*.md'
   workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL of the page to post as blog content (optional)'
+        required: false
+        type: string
+      title:
+        description: 'Optional title override'
+        required: false
+        type: string
 
 jobs:
   publish:
@@ -13,17 +22,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Pandoc
-        run: sudo apt-get install -y pandoc
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y pandoc
+          python3 -m pip install --upgrade pip
+          pip install requests beautifulsoup4
 
-      - name: Find latest added/modified Markdown file
+      - name: Decide content source
+        id: source
+        run: |
+          if [ -n "${{ github.event.inputs.url }}" ]; then
+            echo "FROM_URL=true" >> $GITHUB_ENV
+            echo "POST_URL=${{ github.event.inputs.url }}" >> $GITHUB_ENV
+            # Use provided title or fallback to URL
+            if [ -n "${{ github.event.inputs.title }}" ]; then
+              echo "TITLE=${{ github.event.inputs.title }}" >> $GITHUB_ENV
+            else
+              echo "TITLE=$(basename "${{ github.event.inputs.url }}")" >> $GITHUB_ENV
+            fi
+          else
+            echo "FROM_URL=false" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch and convert URL content (if URL provided)
+        if: env.FROM_URL == 'true'
+        run: |
+          python3 scripts/fetch_and_save_html.py "$POST_URL" page_content.html
+
+      - name: Find latest added/modified Markdown file (if NOT using URL)
+        if: env.FROM_URL != 'true'
         id: findfile
         shell: bash
         run: |
           set -e
           file=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^content/posts/' | grep '\.md$' | tail -n 1 || true)
           if [ -z "$file" ]; then
-            # fallback: pick the latest file in content/posts/
             file=$(ls -t content/posts/*.md | head -n 1)
           fi
           html_file="${file%.md}.html"
@@ -32,15 +65,21 @@ jobs:
           echo "HTML_FILE=$html_file" >> $GITHUB_ENV
           echo "TITLE=$title" >> $GITHUB_ENV
 
-      - name: Convert Markdown to HTML
+      - name: Convert Markdown to HTML (if NOT using URL)
+        if: env.FROM_URL != 'true'
         run: |
           pandoc "$MD_FILE" -f markdown -t html -o "$HTML_FILE"
 
       - name: Read HTML as output
         id: get_html
         run: |
+          if [ "${FROM_URL}" = "true" ]; then
+            html_file="page_content.html"
+          else
+            html_file="${HTML_FILE}"
+          fi
           echo "content<<EOF" >> $GITHUB_OUTPUT
-          cat "$HTML_FILE" >> $GITHUB_OUTPUT
+          cat "$html_file" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Publish to WordPress via REST API
