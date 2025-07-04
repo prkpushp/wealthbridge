@@ -1,4 +1,4 @@
-name: Publish Blog Post to WordPress
+name: Publish Blog Post to WordPress from URL
 
 on:
   push:
