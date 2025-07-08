@@ -1,52 +1,48 @@
-# scripts/fetch_page.py
-
-import sys
+import os
 import requests
-from bs4 import BeautifulSoup
+import json
 
-if len(sys.argv) < 2:
-    print("Usage: python fetch_page.py <URL>")
-    sys.exit(1)
+API_KEY = os.environ.get("GEMINI_API_KEY")
+SOURCE_URL = os.environ.get("SOURCE_URL")
 
-url = sys.argv[1]
+if not API_KEY:
+    raise RuntimeError("GEMINI_API_KEY not set")
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/122.0.0.0 Safari/537.36"
-}
+with open('page_content.txt', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+if len(content) > 12000:
+    content = content[:12000]
+
+prompt = (
+    "Create a blog-style summary of this article.\n"
+    "Start with a short introduction (<h2>), then summarize the main points in an HTML <ul> list.\n"
+    "End with a clean backlink to the original article.\n\n"
+    + content
+)
+
+response = requests.post(
+    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent?key={API_KEY}",
+    headers={"Content-Type": "application/json"},
+    data=json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 512}
+    })
+)
+
+if response.status_code != 200:
+    print("Error:", response.status_code, response.text)
+    exit(1)
 
 try:
-    response = requests.get(url, headers=headers, timeout=10)
-    response.raise_for_status()
-except requests.exceptions.RequestException as e:
-    print(f"Failed to fetch URL: {e}")
-    sys.exit(1)
+    summary = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+except (KeyError, IndexError):
+    print("Invalid Gemini response")
+    exit(1)
 
-soup = BeautifulSoup(response.text, "lxml")
+# Append source
+summary += f'<p><em>Source: <a href="{SOURCE_URL}" target="_blank">{SOURCE_URL}</a></em></p>'
 
-# CNBC-specific article body container
-article_div = soup.find("div", class_="ArticleBody-articleBody")
-
-if not article_div:
-    print("Could not find article content")
-    sys.exit(1)
-
-# Extract and clean paragraphs
-paragraphs = article_div.find_all("p")
-html_content = ""
-for p in paragraphs:
-    text = p.get_text(strip=True)
-    if text:
-        html_content += f"<p>{text}</p>\n"
-
-# Final validation
-if not html_content.strip():
-    print("Article content is empty")
-    sys.exit(1)
-
-# Save to file
-with open("page_content.txt", "w", encoding="utf-8") as f:
-    f.write(html_content)
-
-print("Page content saved to page_content.txt")
+# Save as final HTML
+with open("summary.html", "w", encoding="utf-8") as f:
+    f.write(summary)
