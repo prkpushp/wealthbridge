@@ -66,4 +66,4 @@ jobs:
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
             -d "{\"title\": \"$FINAL_TITLE\", \"content\": \"$(echo "${{ steps.get_summary.outputs.summary }}" | sed ':a;N;$!ba;s/\n/\\n/g')\", \"status\": \"publish\"}"
-summarize_and_post.yml
+
