@@ -40,6 +40,11 @@ except (KeyError, IndexError):
     print("Invalid Gemini response")
     exit(1)
 
+# Remove Markdown code block wrappers if present
+if summary.startswith("```html"):
+    summary = summary.replace("```html", "").replace("```", "").strip()
+
+
 # Append source
 summary += f'<p><em>Source: <a href="{SOURCE_URL}" target="_blank">{SOURCE_URL}</a></em></p>'
 
