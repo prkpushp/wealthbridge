@@ -1,0 +1,76 @@
+name: Publish (Pro)
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'CNBC article URL'
+        required: true
+        type: string
+      title:
+        description: 'Optional title override'
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          pip install requests beautifulsoup4
+
+      - name: Fetch content and metadata
+        env:
+          URL: ${{ github.event.inputs.url }}
+        run: |
+          python scripts/fetch_page-pro.py "$URL"
+
+      - name: Load metadata
+        id: meta
+        run: |
+          echo "TITLE=$(jq -r '.title // empty' meta.json)" >> $GITHUB_ENV
+          echo "IMAGE_URL=$(jq -r '.image // empty' meta.json)" >> $GITHUB_ENV
+
+      - name: Summarize using Gemini (Pro)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SOURCE_URL: ${{ github.event.inputs.url }}
+        run: |
+          python scripts/summarize_with_gemini-pro.py
+
+      - name: Determine final title
+        run: |
+          if [ -n "${{ github.event.inputs.title }}" ]; then
+            echo "TITLE=${{ github.event.inputs.title }}" >> $GITHUB_ENV
+          fi
+
+      - name: Publish to WordPress (Pro)
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
+          TITLE: ${{ env.TITLE }}
+          IMAGE_URL: ${{ env.IMAGE_URL }}
+        run: |
+          AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
+          CONTENT=$(cat summary-pro.html)
+          EXCERPT=$(cat excerpt-pro.txt)
+
+          if [ -n "$IMAGE_URL" ]; then
+            CONTENT="<img src='$IMAGE_URL' alt='Featured image' style='max-width:100%; border-radius:10px; margin-bottom:20px;' />\n\n$CONTENT"
+          fi
+
+          curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
+            -H "Authorization: Basic $AUTH" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg content "$CONTENT" \
+              --arg excerpt "$EXCERPT" \
+              '{title: $title, content: $content, excerpt: $excerpt, status: "publish"}')"
