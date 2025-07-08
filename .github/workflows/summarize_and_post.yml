@@ -60,15 +60,18 @@ jobs:
         run: |
           AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
           CONTENT=$(cat summary.html)
-
+          EXCERPT=$(cat excerpt.txt)
+      
           if [ -n "$IMAGE_URL" ]; then
-            CONTENT="<img src='$IMAGE_URL' alt='Featured image' style='max-width:100%; border-radius:10px;' />\n\n$CONTENT"
+            CONTENT="<img src='$IMAGE_URL' alt='Featured image' style='max-width:100%; border-radius:10px; margin-bottom:20px;' />\n\n$CONTENT"
           fi
-
+      
           curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
             -d "$(jq -n \
               --arg title "$TITLE" \
               --arg content "$CONTENT" \
-              '{title: $title, content: $content, status: "publish"}')"
+              --arg excerpt "$EXCERPT" \
+              '{title: $title, content: $content, excerpt: $excerpt, status: "publish"}')"
+
