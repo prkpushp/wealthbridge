@@ -1,10 +1,10 @@
-name: Summarize and Publish to WordPress from URL
+name: POST from URL
 
 on:
   workflow_dispatch:
     inputs:
       url:
-        description: 'URL of the page to summarize and publish'
+        description: 'URL of the article to summarize and post'
         required: true
         type: string
       title:
@@ -12,63 +12,60 @@ on:
         required: false
         type: string
 
-permissions:
-  contents: read
-
 jobs:
-  summarize_and_publish:
+  publish:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 google-generativeai lxml
+          sudo apt-get update
+          sudo apt-get install -y jq
+          python3 -m pip install --upgrade pip
+          pip install requests beautifulsoup4
 
-      - name: Fetch page content
-        id: fetch
+      - name: Extract article content (CNBC only for now)
+        env:
+          URL: ${{ github.event.inputs.url }}
         run: |
-          python scripts/fetch_page.py "${{ github.event.inputs.url }}"
+          python scripts/fetch_page.py "$URL"
 
-      - name: Summarize text with Gemini API
-        id: summarize
+      - name: Summarize article with Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SOURCE_URL: ${{ github.event.inputs.url }}
         run: |
           python scripts/summarize_with_gemini.py
 
-      - name: Read summary content
-        id: get_summary
+      - name: Extract page title from HTML
+        id: extract_title
         run: |
-          summary=$(<summary.txt)
-          summary="${summary//'%'/'%25'}"
-          summary="${summary//$'\n'/'%0A'}"
-          summary="${summary//$'\r'/'%0D'}"
-          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          url="${{ github.event.inputs.url }}"
+          html=$(curl -s "$url")
+          title=$(echo "$html" | grep -oP '(?<=<title>).*?(?=</title>)' | sed 's/|.*//;s/- CNBC//;s/–.*//;s/^\s*//;s/\s*$//')
+          if [ -z "${{ github.event.inputs.title }}" ]; then
+            echo "TITLE=$title" >> $GITHUB_ENV
+          else
+            echo "TITLE=${{ github.event.inputs.title }}" >> $GITHUB_ENV
+          fi
 
-      
-
-      - name: Publish to WordPress via REST API
+      - name: Publish to WordPress
         env:
           WP_URL: ${{ secrets.WP_URL }}
           WP_USER: ${{ secrets.WP_USER }}
           WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
+          TITLE: ${{ env.TITLE }}
         run: |
-          TITLE_INPUT="${{ github.event.inputs.title }}"
-          DEFAULT_TITLE=$(curl -s "${{ github.event.inputs.url }}" | grep -oP '(?<=<title>)(.*?)(?=</title>)' | sed 's/|.*//;s/- CNBC//;s/–.*//')
-          FINAL_TITLE="${TITLE_INPUT:-$DEFAULT_TITLE}"
           AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
+          CONTENT=$(cat summary.txt)
+
           curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
-            -d "{\"title\": \"$FINAL_TITLE\", \"content\": \"$(echo "${{ steps.get_summary.outputs.summary }}" | sed ':a;N;$!ba;s/\n/\\n/g')\", \"status\": \"publish\"}"
-
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg content "$CONTENT" \
+              '{title: $title, content: $content, status: "publish"}')"
