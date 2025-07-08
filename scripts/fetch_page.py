@@ -1,48 +1,49 @@
-import os
+import sys
 import requests
+from bs4 import BeautifulSoup
 import json
 
-API_KEY = os.environ.get("GEMINI_API_KEY")
-SOURCE_URL = os.environ.get("SOURCE_URL")
+if len(sys.argv) < 2:
+    print("Usage: python fetch_page.py <URL>")
+    sys.exit(1)
 
-if not API_KEY:
-    raise RuntimeError("GEMINI_API_KEY not set")
-
-with open('page_content.txt', 'r', encoding='utf-8') as f:
-    content = f.read()
-
-if len(content) > 12000:
-    content = content[:12000]
-
-prompt = (
-    "Create a blog-style summary of this article.\n"
-    "Start with a short introduction (<h2>), then summarize the main points in an HTML <ul> list.\n"
-    "End with a clean backlink to the original article.\n\n"
-    + content
-)
-
-response = requests.post(
-    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent?key={API_KEY}",
-    headers={"Content-Type": "application/json"},
-    data=json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 512}
-    })
-)
-
-if response.status_code != 200:
-    print("Error:", response.status_code, response.text)
-    exit(1)
+url = sys.argv[1]
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+}
 
 try:
-    summary = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-except (KeyError, IndexError):
-    print("Invalid Gemini response")
-    exit(1)
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+except Exception as e:
+    print(f"Failed to fetch URL: {e}")
+    sys.exit(1)
 
-# Append source
-summary += f'<p><em>Source: <a href="{SOURCE_URL}" target="_blank">{SOURCE_URL}</a></em></p>'
+soup = BeautifulSoup(res.text, "html.parser")
 
-# Save as final HTML
-with open("summary.html", "w", encoding="utf-8") as f:
-    f.write(summary)
+# Extract article body (CNBC-specific)
+body = soup.find("div", class_="ArticleBody-articleBody")
+if not body:
+    print("Could not find article content")
+    sys.exit(1)
+
+html_content = ""
+for p in body.find_all("p"):
+    text = p.get_text(strip=True)
+    if text:
+        html_content += f"<p>{text}</p>\n"
+
+# Save article content
+with open("page_content.txt", "w", encoding="utf-8") as f:
+    f.write(html_content)
+
+# Extract metadata
+title = soup.find("h1")
+image_div = soup.find("div", class_="ArticleHeader-heroImage")
+image_url = image_div.img["src"] if image_div and image_div.img else None
+
+with open("meta.json", "w", encoding="utf-8") as f:
+    json.dump({
+        "title": title.get_text(strip=True) if title else None,
+        "image": image_url
+    }, f)
