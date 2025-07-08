@@ -44,10 +44,23 @@ except (KeyError, IndexError):
 if summary.startswith("```html"):
     summary = summary.replace("```html", "").replace("```", "").strip()
 
+# Extract first paragraph as excerpt
+import re
+match = re.search(r"<p>(.*?)</p>", summary, re.DOTALL)
+excerpt = match.group(1).strip() if match else "A concise summary of today's market insights from CNBC."
 
-# Append source
-summary += f'<p><em>Source: <a href="{SOURCE_URL}" target="_blank">{SOURCE_URL}</a></em></p>'
+# Save excerpt
+with open("excerpt.txt", "w", encoding="utf-8") as f:
+    f.write(excerpt)
 
-# Save as final HTML
+# Wrap summary with styled container
+styled_summary = f'''
+<div style="font-family: 'Segoe UI', Roboto, sans-serif; font-size: 17px; line-height: 1.7; color: #222; padding: 10px 0;">
+{summary}
+</div>
+<p><em style="font-size: 15px; color: #555;">Source: <a href="{SOURCE_URL}" target="_blank" style="color: #0073aa;">{SOURCE_URL}</a></em></p>
+'''
+
+# Save styled HTML
 with open("summary.html", "w", encoding="utf-8") as f:
-    f.write(summary)
+    f.write(styled_summary)
