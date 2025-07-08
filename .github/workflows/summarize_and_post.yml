@@ -1,10 +1,10 @@
-name: POST from URL
+name: Publish CNBC Article to WordPress
 
 on:
   workflow_dispatch:
     inputs:
       url:
-        description: 'URL of the article to summarize and post'
+        description: 'CNBC article URL'
         required: true
         type: string
       title:
@@ -17,38 +17,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-          python3 -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml
+          pip install requests beautifulsoup4
 
-      - name: Extract article content (CNBC only for now)
+      - name: Fetch content and metadata
         env:
           URL: ${{ github.event.inputs.url }}
         run: |
           python scripts/fetch_page.py "$URL"
 
-      - name: Summarize article with Gemini
+      - name: Load metadata
+        id: meta
+        run: |
+          echo "TITLE=$(jq -r '.title // empty' meta.json)" >> $GITHUB_ENV
+          echo "IMAGE_URL=$(jq -r '.image // empty' meta.json)" >> $GITHUB_ENV
+
+      - name: Summarize using Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SOURCE_URL: ${{ github.event.inputs.url }}
         run: |
           python scripts/summarize_with_gemini.py
 
-      - name: Extract page title from HTML
-        id: extract_title
+      - name: Determine final title
         run: |
-          url="${{ github.event.inputs.url }}"
-          html=$(curl -s "$url")
-          title=$(echo "$html" | grep -oP '(?<=<title>).*?(?=</title>)' | sed 's/|.*//;s/- CNBC//;s/–.*//;s/^\s*//;s/\s*$//')
-          if [ -z "${{ github.event.inputs.title }}" ]; then
-            echo "TITLE=$title" >> $GITHUB_ENV
-          else
+          if [ -n "${{ github.event.inputs.title }}" ]; then
             echo "TITLE=${{ github.event.inputs.title }}" >> $GITHUB_ENV
           fi
 
@@ -58,9 +56,14 @@ jobs:
           WP_USER: ${{ secrets.WP_USER }}
           WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
           TITLE: ${{ env.TITLE }}
+          IMAGE_URL: ${{ env.IMAGE_URL }}
         run: |
           AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
-          CONTENT=$(cat summary.txt)
+          CONTENT=$(cat summary.html)
+
+          if [ -n "$IMAGE_URL" ]; then
+            CONTENT="<img src='$IMAGE_URL' alt='Featured image' style='max-width:100%; border-radius:10px;' />\n\n$CONTENT"
+          fi
 
           curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
             -H "Authorization: Basic $AUTH" \
