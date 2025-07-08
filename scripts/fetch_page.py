@@ -3,14 +3,12 @@
 import sys
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 
 if len(sys.argv) < 2:
     print("Usage: python fetch_page.py <URL>")
     sys.exit(1)
 
 url = sys.argv[1]
-domain = urlparse(url).netloc
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -25,39 +23,30 @@ except requests.exceptions.RequestException as e:
     print(f"Failed to fetch URL: {e}")
     sys.exit(1)
 
-soup = BeautifulSoup(response.text, "html.parser")
+soup = BeautifulSoup(response.text, "lxml")
 
-text = ""
+# CNBC-specific article body container
+article_div = soup.find("div", class_="ArticleBody-articleBody")
 
-# --- SITE-SPECIFIC PARSING RULES ---
-
-if "cnbc.com" in domain:
-    article = soup.find("div", class_="ArticleBody-articleBody")
-    if article:
-        paragraphs = article.find_all("p")
-        text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
-
-elif "indiatimes.com" in domain:
-    article = soup.find("div", class_="article-content") or soup.find("div", {"class": lambda x: x and "content" in x})
-    if article:
-        paragraphs = article.find_all("p")
-        text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
-
-# --- GENERAL FALLBACK ---
-
-if not text:
-    article = soup.find("article") or soup.find("main")
-    if article:
-        paragraphs = article.find_all("p")
-        text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
-
-# --- Final Check ---
-
-if not text.strip():
+if not article_div:
     print("Could not find article content")
     sys.exit(1)
 
+# Extract and clean paragraphs
+paragraphs = article_div.find_all("p")
+html_content = ""
+for p in paragraphs:
+    text = p.get_text(strip=True)
+    if text:
+        html_content += f"<p>{text}</p>\n"
+
+# Final validation
+if not html_content.strip():
+    print("Article content is empty")
+    sys.exit(1)
+
+# Save to file
 with open("page_content.txt", "w", encoding="utf-8") as f:
-    f.write(text)
+    f.write(html_content)
 
 print("Page content saved to page_content.txt")
