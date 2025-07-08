@@ -49,9 +49,12 @@ jobs:
       - name: Read summary content
         id: get_summary
         run: |
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          cat summary.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "summary<<EOF"
+            cat summary.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      
 
       - name: Publish to WordPress via REST API
         env:
