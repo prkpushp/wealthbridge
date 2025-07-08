@@ -42,6 +42,7 @@ jobs:
         id: summarize
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SOURCE_URL: ${{ github.event.inputs.url }}
         run: |
           python scripts/summarize_with_gemini.py
 
@@ -59,7 +60,7 @@ jobs:
           WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
         run: |
           TITLE_INPUT="${{ github.event.inputs.title }}"
-          DEFAULT_TITLE=$(basename "${{ github.event.inputs.url }}")
+          DEFAULT_TITLE=$(curl -s "${{ github.event.inputs.url }}" | grep -oP '(?<=<title>)(.*?)(?=</title>)' | sed 's/|.*//;s/- CNBC//;s/–.*//')
           FINAL_TITLE="${TITLE_INPUT:-$DEFAULT_TITLE}"
           AUTH=$(echo -n "$WP_USER:$WP_APPLICATION_PASSWORD" | base64)
           curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
