@@ -1,11 +1,13 @@
 name: Publish (Pro)
 
 on:
+  schedule:
+    - cron: '30 3 * * *'  # 9:00 AM IST
   workflow_dispatch:
     inputs:
       url:
-        description: 'CNBC article URL'
-        required: true
+        description: 'Optional CNBC article URL'
+        required: false
         type: string
       title:
         description: 'Optional title override'
@@ -25,14 +27,23 @@ jobs:
           sudo apt-get install -y jq
           pip install requests beautifulsoup4
 
-      - name: Fetch content and metadata
-        env:
-          URL: ${{ github.event.inputs.url }}
+      - name: Select article URL (only if scheduled)
+        if: github.event_name == 'schedule'
+        run: python scripts/select_latest_finance_url.py
+
+      - name: Set URL environment variable
         run: |
-          python scripts/fetch_page-pro.py "$URL"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "URL=${{ github.event.inputs.url }}" >> $GITHUB_ENV
+          else
+            URL=$(cat selected_url.txt)
+            echo "URL=$URL" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch content and metadata
+        run: python scripts/fetch_page-pro.py "$URL"
 
       - name: Load metadata
-        id: meta
         run: |
           echo "TITLE=$(jq -r '.title // empty' meta.json)" >> $GITHUB_ENV
           echo "IMAGE_URL=$(jq -r '.image // empty' meta.json)" >> $GITHUB_ENV
@@ -40,9 +51,8 @@ jobs:
       - name: Summarize using Gemini (Pro)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SOURCE_URL: ${{ github.event.inputs.url }}
-        run: |
-          python scripts/summarize_with_gemini-pro.py
+          SOURCE_URL: ${{ env.URL }}
+        run: python scripts/summarize_with_gemini-pro.py
 
       - name: Determine final title
         run: |
@@ -66,11 +76,10 @@ jobs:
             CONTENT="<img src='$IMAGE_URL' alt='Featured image' style='max-width:100%; border-radius:10px; margin-bottom:20px;' />\n\n$CONTENT"
           fi
 
+          CONTENT_ESCAPED=$(jq -Rs . <<< "$CONTENT")
+          EXCERPT_ESCAPED=$(jq -Rs . <<< "$EXCERPT")
+
           curl -X POST "$WP_URL/wp-json/wp/v2/posts" \
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg title "$TITLE" \
-              --arg content "$CONTENT" \
-              --arg excerpt "$EXCERPT" \
-              '{title: $title, content: $content, excerpt: $excerpt, status: "publish"}')"
+            -d "{ \"title\": \"$TITLE\", \"content\": $CONTENT_ESCAPED, \"excerpt\": $EXCERPT_ESCAPED, \"status\": \"publish\" }"
