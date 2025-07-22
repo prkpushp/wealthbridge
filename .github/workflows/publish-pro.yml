@@ -34,16 +34,28 @@ jobs:
       - name: Set article URL
         id: seturl
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.url }}" ]; then
-            echo "Using manually provided URL"
-            echo "URL=${{ github.event.inputs.url }}" >> $GITHUB_ENV
-          elif [ -f selected_url.txt ]; then
-            echo "Using scraped finance URL"
-            echo "URL=$(cat selected_url.txt)" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ github.event.inputs.url }}" ]; then
+              echo "Using manually provided URL"
+              echo "URL=${{ github.event.inputs.url }}" >> $GITHUB_ENV
+            else
+              echo "❌ No URL provided in manual run"
+              exit 1
+            fi
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ -f selected_url.txt ]; then
+              URL=$(cat selected_url.txt)
+              echo "Using scraped finance URL"
+              echo "URL=$URL" >> $GITHUB_ENV
+            else
+              echo "❌ selected_url.txt not found"
+              exit 1
+            fi
           else
-            echo "❌ No URL provided and selected_url.txt not found"
+            echo "❌ Unknown event type: ${{ github.event_name }}"
             exit 1
           fi
+
 
       - name: Debug print URL
         run: |
