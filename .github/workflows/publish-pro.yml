@@ -31,13 +31,26 @@ jobs:
         if: github.event_name == 'schedule'
         run: python scripts/select_latest_finance_url.py
 
-      - name: Set URL environment variable
+      - name: Set article URL
+        id: seturl
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.url }}" ]; then
+            echo "Using manually provided URL"
             echo "URL=${{ github.event.inputs.url }}" >> $GITHUB_ENV
+          elif [ -f selected_url.txt ]; then
+            echo "Using scraped finance URL"
+            echo "URL=$(cat selected_url.txt)" >> $GITHUB_ENV
           else
-            URL=$(cat selected_url.txt)
-            echo "URL=$URL" >> $GITHUB_ENV
+            echo "❌ No URL provided and selected_url.txt not found"
+            exit 1
+          fi
+
+      - name: Debug print URL
+        run: |
+          echo "🔍 URL from env: $URL"
+          if [ -z "$URL" ]; then
+            echo "❌ URL is empty"
+            exit 1
           fi
 
       - name: Fetch content and metadata
