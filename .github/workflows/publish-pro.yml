@@ -27,9 +27,9 @@ jobs:
           sudo apt-get install -y jq
           pip install requests beautifulsoup4
 
-      - name: Select article URL (only if scheduled)
+      - name: Select next unposted article URL (only if scheduled)
         if: github.event_name == 'schedule'
-        run: python scripts/select_latest_finance_url.py
+        run: python scripts/select_next_unposted_url.py
 
       - name: Set article URL
         id: seturl
@@ -45,10 +45,6 @@ jobs:
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             if [ -f selected_url.txt ]; then
               URL=$(cat selected_url.txt)
-              if grep -Fxq "$URL" uploaded_url.txt; then
-                echo "❌ URL has already been posted"
-                exit 1
-              fi
               echo "Using scraped finance URL"
               echo "URL=$URL" >> $GITHUB_ENV
             else
