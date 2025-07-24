@@ -27,9 +27,9 @@ jobs:
           sudo apt-get install -y jq
           pip install requests beautifulsoup4
 
-      - name: Select article URL (only if scheduled)
+      - name: Select next unposted article URL (only if scheduled)
         if: github.event_name == 'schedule'
-        run: python scripts/select_latest_finance_url.py
+        run: python scripts/select_next_unposted_url.py
 
       - name: Set article URL
         id: seturl
@@ -107,3 +107,5 @@ jobs:
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
             -d "{ \"title\": \"$TITLE\", \"content\": $CONTENT_ESCAPED, \"excerpt\": $EXCERPT_ESCAPED, \"status\": \"publish\" }"
+
+          echo "$URL" >> uploaded_url.txt
