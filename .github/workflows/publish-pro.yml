@@ -45,6 +45,10 @@ jobs:
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             if [ -f selected_url.txt ]; then
               URL=$(cat selected_url.txt)
+              if grep -Fxq "$URL" uploaded_url.txt; then
+                echo "❌ URL has already been posted"
+                exit 1
+              fi
               echo "Using scraped finance URL"
               echo "URL=$URL" >> $GITHUB_ENV
             else
@@ -107,3 +111,5 @@ jobs:
             -H "Authorization: Basic $AUTH" \
             -H "Content-Type: application/json" \
             -d "{ \"title\": \"$TITLE\", \"content\": $CONTENT_ESCAPED, \"excerpt\": $EXCERPT_ESCAPED, \"status\": \"publish\" }"
+
+          echo "$URL" >> uploaded_url.txt
