@@ -2,7 +2,7 @@ name: Publish (Pro)
 
 on:
   schedule:
-    - cron: '30 * * * *'  # 9:00 AM IST
+    - cron: '30 00 * * *'  # 9:00 AM IST
   workflow_dispatch:
     inputs:
       url:
